@@ -76,16 +76,12 @@ team_t team = {
 
 #define SIZE_T_SIZE (ALIGN(sizeof(size_t)))
 
-/* private variables */
-static char *mem_start_brk;  /* points to first byte of heap */
-static char *mem_brk;        /* points to last byte of heap */
-static char *mem_max_addr;   /* largest legal heap address */
 
 /* 
  * mm_init - initialize the malloc package.
  */
 
-static heap_listp = NULL;
+static void* heap_listp = NULL;
 
 static void *coalesce(void *bp) {
     size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp)));
@@ -254,9 +250,7 @@ static void *extend_heap(size_t words) {
 
     // allocate an even number of words to maintain alignment (multiple of 2 words(8 bytes)
     size = (words % 2) ? (words + 1) * WSIZE : words * WSIZE;
-    // words를 2로 나눈 나머지가 0인 경우, (0+1) * WSIZE..?
-    // words를 2로 나눈 나머지가 1인 경우, (1) * WSIZE..?
-    // size는 WSIZE..? 그럼그냥 size = WSIZE 하면 되는거아닌가,,
+
 
     if ( (long)(bp = mem_sbrk(size)) == -1) {
         //mem_sbrk(size) 값이 -1인 경우, NULL 리턴
