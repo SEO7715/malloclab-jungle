@@ -82,6 +82,8 @@ team_t team = {
  */
 
 static void* heap_listp = NULL;
+static void* next_listp = NULL;
+
 
 static void *coalesce(void *bp) {
     size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp)));
@@ -115,6 +117,9 @@ static void *coalesce(void *bp) {
         PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0)); 
         bp = PREV_BLKP(bp); 
     }
+
+    next_listp = bp;
+    
     return bp;
 }
 
@@ -128,6 +133,8 @@ int mm_init(void)
     PUT(heap_listp + (2*WSIZE), PACK(DSIZE, 1)); // prologue footer // initial block 생성하여 여기서부터 시작하도록 해주기
     PUT(heap_listp + (3*WSIZE), PACK(0, 1)); //epilogue header // 마지막 부분 설정(heap end)
     heap_listp += (2*WSIZE); 
+
+    next_listp = heap_listp;
 
     // Extend the empty heap with a free block of CHUNKSIZE byte //
     if (extend_heap(CHUNKSIZE/WSIZE) == NULL) //extend_heap(CHUNKSIZE/WSIZE)값이 null이면 할당 실패 이므로, -1 반환
@@ -160,6 +167,7 @@ void *mm_malloc(size_t size)
     // search the free list for a fit
     if ((bp = find_fit(asize)) != NULL) {
         place(bp, asize);  
+        next_listp = bp;
         return bp; // place 된 블록의 위치 return
     }
 
@@ -167,22 +175,51 @@ void *mm_malloc(size_t size)
     extendsize = MAX(asize, CHUNKSIZE);
     if ((bp = extend_heap(extendsize/WSIZE)) == NULL)
         return NULL;
+    next_listp = bp;
     place(bp, asize);
     return bp;
 }
 
 // find fit block
+// static void *find_fit(size_t asize) {
+    
+//     // fisrt-fit search
+//     void *bp;
+    
+//     // 현재 header 내 size 값이 0보다 크고
+//     // bp = 다음 블록의 bp값으로 update
+//     for(bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) {
+ 
+//         // 현재 블록이 free 상태이고, 현재 블록 사이즈가 asize(조정한 사이즈)보다 같거나 더 클 경우
+//         // 수용 가능한 블록
+//         if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))) {
+//             return bp;
+//         }
+//     }
+
+//     return NULL; 
+// // #endif
+// }
+
+// find fit block
 static void *find_fit(size_t asize) {
     
-    // fisrt-fit search
+    // next-fit search
     void *bp;
     
     // 현재 header 내 size 값이 0보다 크고
     // bp = 다음 블록의 bp값으로 update
-    for(bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) {
-
+    for(bp = next_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) {
+ 
         // 현재 블록이 free 상태이고, 현재 블록 사이즈가 asize(조정한 사이즈)보다 같거나 더 클 경우
         // 수용 가능한 블록
+        if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))) {
+            return bp;
+        }
+    }
+    
+    for(bp = heap_listp; GET_SIZE(HDRP(bp)) > 0 && bp < next_listp; bp = NEXT_BLKP(bp)) {
+ 
         if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))) {
             return bp;
         }
