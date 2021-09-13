@@ -1,7 +1,7 @@
 // Basic constants and macros
 #define WSIZE 4 //word and header/footer size (bytes)
 #define DSIZE 8 //double word size(bytes)
-#define CHUNKSIZE (1<<12) // extend heap by this amout(bytes)
+#define CHUNKSIZE (1<<12) // extend heap by this amout(bytes) 2^12 (임의 설정)
 
 #define MAX(x, y) ((x) > (y)? (x) : (y)) // x 가 y 값보다 더크면 x, y가 더 크면 y
 
@@ -85,43 +85,7 @@ static void* heap_listp = NULL;
 static void* next_listp = NULL;
 
 
-static void *coalesce(void *bp) {
-    size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp)));
-    size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
-    size_t size = GET_SIZE(HDRP(bp));
-
-    //case 1 (이전블록, 다음블록 모두 할당되어 있는 경우)
-    if (prev_alloc && next_alloc) {  
-        return bp; 
-    }
-
-    //case 2 (이전블록 allocated, 다음블록 free)
-    else if (prev_alloc && !next_alloc) {
-        size += GET_SIZE(HDRP(NEXT_BLKP(bp))); 
-        PUT(HDRP(bp), PACK(size, 0)); 
-        PUT(FTRP(bp), PACK(size, 0));  
-    }
-
-    //case 3 (이전블록 free, 다음블록 allocated)
-    else if (!prev_alloc && next_alloc) {
-        size += GET_SIZE(HDRP(PREV_BLKP(bp))); 
-        PUT(FTRP(bp), PACK(size, 0)); 
-        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
-        bp = PREV_BLKP(bp); 
-    }
-
-    //case 4 (이전블록, 다음블록 모두 free)
-    else {
-        size += GET_SIZE(HDRP(PREV_BLKP(bp))) + GET_SIZE(FTRP(NEXT_BLKP(bp)));
-        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0)); 
-        PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0)); 
-        bp = PREV_BLKP(bp); 
-    }
-
-    next_listp = bp;
-    
-    return bp;
-}
+// CHUNKSIZE크기의 empty heap 생성
 
 int mm_init(void)
 {   
@@ -140,6 +104,28 @@ int mm_init(void)
     if (extend_heap(CHUNKSIZE/WSIZE) == NULL) //extend_heap(CHUNKSIZE/WSIZE)값이 null이면 할당 실패 이므로, -1 반환
         return -1; //
     return 0;
+}
+
+// Creates a heap with an initial free block
+static void *extend_heap(size_t words) {
+    char *bp;
+    size_t size;
+
+    // allocate an even number of words to maintain alignment (multiple of 2 words(8 bytes)
+    size = (words % 2) ? (words + 1) * WSIZE : words * WSIZE;
+
+
+    if ( (long)(bp = mem_sbrk(size)) == -1) {
+        //mem_sbrk(size) 값이 -1인 경우, NULL 리턴
+        return NULL;
+    }
+    // initialize free block header/footer and the epilogue header (requests the additional heap space from the memory system)
+    PUT(HDRP(bp), PACK(size, 0)); // free block header
+    PUT(FTRP(bp), PACK(size, 0)); // free block footer
+    PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1)); // new epilogue header
+
+    // coalesce if the previous block was free
+    return coalesce(bp);
 }
 
 /* 
@@ -180,44 +166,21 @@ void *mm_malloc(size_t size)
     return bp;
 }
 
-// find fit block
-// static void *find_fit(size_t asize) {
-    
-//     // fisrt-fit search
-//     void *bp;
-    
-//     // 현재 header 내 size 값이 0보다 크고
-//     // bp = 다음 블록의 bp값으로 update
-//     for(bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) {
- 
-//         // 현재 블록이 free 상태이고, 현재 블록 사이즈가 asize(조정한 사이즈)보다 같거나 더 클 경우
-//         // 수용 가능한 블록
-//         if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))) {
-//             return bp;
-//         }
-//     }
-
-//     return NULL; 
-// // #endif
-// }
 
 // find fit block
 static void *find_fit(size_t asize) {
     
     // next-fit search
     void *bp;
-    
-    // 현재 header 내 size 값이 0보다 크고
-    // bp = 다음 블록의 bp값으로 update
+
     for(bp = next_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) {
- 
-        // 현재 블록이 free 상태이고, 현재 블록 사이즈가 asize(조정한 사이즈)보다 같거나 더 클 경우
-        // 수용 가능한 블록
+
         if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))) {
             return bp;
         }
     }
-    
+
+    // next_fit 포인터가 가리키는 위치 이후의 블록에서 fit한 블록을 찾지 못했을 경우, 처음부터 next_fit 포인터까지 순회    
     for(bp = heap_listp; GET_SIZE(HDRP(bp)) > 0 && bp < next_listp; bp = NEXT_BLKP(bp)) {
  
         if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))) {
@@ -257,6 +220,43 @@ void mm_free(void *bp) {
     coalesce(bp); 
 }
 
+static void *coalesce(void *bp) {
+    size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp)));
+    size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
+    size_t size = GET_SIZE(HDRP(bp));
+
+    //case 1 (이전블록, 다음블록 모두 할당되어 있는 경우)
+    if (prev_alloc && next_alloc) {  
+        return bp; 
+    }
+
+    //case 2 (이전블록 allocated, 다음블록 free)
+    else if (prev_alloc && !next_alloc) {
+        size += GET_SIZE(HDRP(NEXT_BLKP(bp))); 
+        PUT(HDRP(bp), PACK(size, 0)); 
+        PUT(FTRP(bp), PACK(size, 0));  
+    }
+
+    //case 3 (이전블록 free, 다음블록 allocated)
+    else if (!prev_alloc && next_alloc) {
+        size += GET_SIZE(HDRP(PREV_BLKP(bp))); 
+        PUT(FTRP(bp), PACK(size, 0)); 
+        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
+        bp = PREV_BLKP(bp); 
+    }
+
+    //case 4 (이전블록, 다음블록 모두 free)
+    else {
+        size += GET_SIZE(HDRP(PREV_BLKP(bp))) + GET_SIZE(FTRP(NEXT_BLKP(bp)));
+        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0)); 
+        PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0)); 
+        bp = PREV_BLKP(bp); 
+    }
+
+    next_listp = bp;
+    
+    return bp;
+}
 
 
 /*
@@ -271,7 +271,6 @@ void *mm_realloc(void *ptr, size_t size)
     newptr = mm_malloc(size);
     if (newptr == NULL)
       return NULL;
-    // copySize = *(size_t *)((char *)oldptr - SIZE_T_SIZE);
     copySize = GET_SIZE(HDRP(oldptr));
     if (size < copySize)
       copySize = size;
@@ -280,24 +279,3 @@ void *mm_realloc(void *ptr, size_t size)
     return newptr;
 }
 
-// Creates a heap with an initial free block
-static void *extend_heap(size_t words) {
-    char *bp;
-    size_t size;
-
-    // allocate an even number of words to maintain alignment (multiple of 2 words(8 bytes)
-    size = (words % 2) ? (words + 1) * WSIZE : words * WSIZE;
-
-
-    if ( (long)(bp = mem_sbrk(size)) == -1) {
-        //mem_sbrk(size) 값이 -1인 경우, NULL 리턴
-        return NULL;
-    }
-    // initialize free block header/footer and the epilogue header (requests the additional heap space from the memory system)
-    PUT(HDRP(bp), PACK(size, 0)); // free block header
-    PUT(FTRP(bp), PACK(size, 0)); // free block footer
-    PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1)); // new epilogue header
-
-    // coalesce if the previous block was free
-    return coalesce(bp);
-}
