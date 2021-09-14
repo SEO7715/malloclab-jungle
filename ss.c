@@ -132,7 +132,7 @@ static void *coalesce(void *bp)
 	else if (!PREV_ALLOC && NEXT_ALLOC)
 	{
 		size += GET_SIZE(HDRP(PREV_BLK(bp)));
-		bp = PREV_BLK(bp); //선 bp 조정 후 삭제
+		bp = PREV_BLK(bp); //(선 bp 조정 후 삭제)
 		remove_from_free_list(bp);
 		PUT(HDRP(bp), PACK(size, 0));
 		PUT(FTRP(bp), PACK(size, 0));
@@ -143,7 +143,7 @@ static void *coalesce(void *bp)
 		size += GET_SIZE(HDRP(PREV_BLK(bp))) + GET_SIZE(HDRP(NEXT_BLK(bp)));
 		remove_from_free_list(PREV_BLK(bp));
 		remove_from_free_list(NEXT_BLK(bp));
-		bp = PREV_BLK(bp); //선 삭제 후 bp 조정
+		bp = PREV_BLK(bp); // 위 case랑 순서 다름(선 삭제 후 bp 조정)
 		PUT(HDRP(bp), PACK(size, 0));
 		PUT(FTRP(bp), PACK(size, 0));
 	}
@@ -186,7 +186,7 @@ static void *find_fit(size_t asize)
 	void *bp;
 	static int last_malloced_size = 0;
 	static int repeat_counter = 0;
-	// 동일 사이즈 반복 요청 횟수 60회 초과시, 힙사이즈 자체 확장해주기(성능을 높이기 위한 방법)
+	// 계속 똑같은 사이즈만 요청했을 때 요청 횟수가 60회가 넘어가면 아예 힙사이즈 확늘린다.(성능을 높이기 위한 방법) ...왜..?
 	if (last_malloced_size == (int)asize)
 	{
 		if (repeat_counter > 60)
@@ -200,7 +200,7 @@ static void *find_fit(size_t asize)
 	}
 	else
 		repeat_counter = 0;
-	// first fit
+	// free block list에서 first fit으로 찾기
 	for (bp = free_list_start; GET_ALLOC(HDRP(bp)) == 0; bp = GET_NEXT_PTR(bp))
 	{
 		if (asize <= (size_t)GET_SIZE(HDRP(bp)))
@@ -247,7 +247,7 @@ static void remove_from_free_list(void *bp)
 {
 	//내 앞에 누구 있으면
 	if (GET_PREV_PTR(bp))
-		SET_NEXT_PTR(GET_PREV_PTR(bp), GET_NEXT_PTR(bp)); // 내 앞 노드 주소에, 내 뒤 노드 주소를 넣기
+		SET_NEXT_PTR(GET_PREV_PTR(bp), GET_NEXT_PTR(bp)); // 내 앞 노드의 주소에다가, 내 뒤 노드의 주소를 넣어준다.
 	else												  // 내 앞에 아무도 없으면 == 내가 젤 앞 노드이면
 		free_list_start = GET_NEXT_PTR(bp);				  // 나를 없애면서, 내 뒷 노드에다가 가장 앞자리 위치 주기
 	SET_PREV_PTR(GET_NEXT_PTR(bp), GET_PREV_PTR(bp));	  // 내 뒤 노드의 주소에다가, 내 앞 주소를 넣어준다.
@@ -278,7 +278,7 @@ void *mm_realloc(void *bp, size_t size)
 	{
 		size_t oldsize = GET_SIZE(HDRP(bp));
 		size_t newsize = size + (2 * WSIZE); // 2 words for header and footer
-		/*if newsize가 oldsize보다 작거나 같으면 just return bp */
+		/*if newsize가 oldsize보다 작거나 같으면 그냥 그대로 써도 됨. just return bp */
 		if (newsize <= oldsize)
 		{
 			return bp;
@@ -289,7 +289,7 @@ void *mm_realloc(void *bp, size_t size)
 			size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLK(bp)));
 			size_t csize;
 			/* next block is free and the size of the two blocks is greater than or equal the new size  */
-			/* next block이 가용상태이고 old, next block의 사이즈 합이 new size보다 크면 바로 합쳐서 쓰기  */
+			/* next block이 가용상태이고 old, next block의 사이즈 합이 new size보다 크면 그냥 그거 바로 합쳐서 쓰기  */
 			if (!next_alloc && ((csize = oldsize + GET_SIZE(HDRP(NEXT_BLK(bp))))) >= newsize)
 			{
 				remove_from_free_list(NEXT_BLK(bp));
