@@ -132,8 +132,8 @@ static void *coalesce(void *bp)
 	else if (!PREV_ALLOC && NEXT_ALLOC)
 	{
 		size += GET_SIZE(HDRP(PREV_BLK(bp)));
-		bp = PREV_BLK(bp); //선 bp 조정 후 삭제
-		remove_from_free_list(bp);
+		remove_from_free_list(PREV_BLK(bp));
+		bp = PREV_BLK(bp); 
 		PUT(HDRP(bp), PACK(size, 0));
 		PUT(FTRP(bp), PACK(size, 0));
 	}
@@ -143,7 +143,7 @@ static void *coalesce(void *bp)
 		size += GET_SIZE(HDRP(PREV_BLK(bp))) + GET_SIZE(HDRP(NEXT_BLK(bp)));
 		remove_from_free_list(PREV_BLK(bp));
 		remove_from_free_list(NEXT_BLK(bp));
-		bp = PREV_BLK(bp); //선 삭제 후 bp 조정
+		bp = PREV_BLK(bp); 
 		PUT(HDRP(bp), PACK(size, 0));
 		PUT(FTRP(bp), PACK(size, 0));
 	}
@@ -186,12 +186,12 @@ static void *find_fit(size_t asize)
 	void *bp;
 	static int last_malloced_size = 0;
 	static int repeat_counter = 0;
-	// 동일 사이즈 반복 요청 횟수 60회 초과시, 힙사이즈 자체 확장해주기(성능을 높이기 위한 방법)
+	// 동일 사이즈 반복 요청 횟수 1000회 초과시, 힙사이즈 자체 확장해주기(성능을 높이기 위한 방법)
 	if (last_malloced_size == (int)asize)
 	{
-		if (repeat_counter > 60)
+		if (repeat_counter > 1000)
 		{
-			int extendsize = MAX(asize, 4 * WSIZE);
+			int extendsize = MAX(asize, 6 * WSIZE);
 			bp = extend_heap(extendsize / 4);
 			return bp;
 		}
@@ -241,7 +241,7 @@ static void insert_in_free_list(void *bp)
 	SET_PREV_PTR(bp, NULL);
 	free_list_start = bp;
 }
-
+ 
 /*Removes the free block pointer int the free_list*/
 static void remove_from_free_list(void *bp)
 {
